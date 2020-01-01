@@ -8,25 +8,41 @@
 /// fn feistel(L0: 32bit, R0: 32bit, K: 48bit) -> 32bit, 32bit;
 /// fn inverseIP(R16, L16) -> 64bit;
 
+const INITIAL_PERMUTATION_TABLE: [u8; 64] = [
+    57, 49, 41, 33, 25, 17, 9, 1,
+    59, 51, 43, 35, 27, 19, 11, 3,
+    61, 53, 45, 37, 29, 21, 13, 5,
+    63, 55, 47, 39, 31, 23, 15, 7,
+    56, 48, 40, 32, 24, 16, 8, 0,
+    58, 50, 42, 34, 26, 18, 10, 2,
+    60, 52, 44, 36, 28, 20, 12, 4,
+    62, 54, 46, 38, 30, 22, 14, 6
+];
 
-fn permutation_table(x:u8) -> u8 {
-    let table = [
-        58,50,42,34,26,18,10,02,
-        60,52,44,36,28,20,12,04,
-        62,54,46,38,30,22,14,06,
-        64,56,48,40,32,24,16,08,
-        57,49,41,33,25,17,09,01,
-        59,51,46,35,27,19,11,03,
-        61,33,45,37,29,21,13,05,
-        63,55,47,39,31,23,15,07,
-    ];
-    table[x as usize] - 1
+const FINAL_PERMUTATION_TABLE: [u8; 64] = [
+    39, 7, 47, 15, 55, 23, 63, 31,
+    38, 6, 46, 14, 54, 22, 62, 30,
+    37, 5, 45, 13, 53, 21, 61, 29,
+    36, 4, 44, 12, 52, 20, 60, 28,
+    35, 3, 43, 11, 51, 19, 59, 27,
+    34, 2, 42, 10, 50, 18, 58, 26,
+    33, 1, 41, 9, 49, 17, 57, 25,
+    32, 0, 40, 8, 48, 16, 56, 24
+];
+
+fn initial_permutation(input: u64) -> u64 {
+    dbg!(input);
+    let mut r : u64 = 0;
+    for i in 0..64 {
+        r += if input &(1<<(63-i)) != 0 {1} else {0} << INITIAL_PERMUTATION_TABLE[i as usize];
+    }
+    r.clone()
 }
 
-fn initial_permutation(input: &[u8;8]) -> [u8;8] {
-    let mut r : [u8; 8] = [0 as u8;8];
-    for i in 0..8 {
-        r[i] = permutation_table(input[i] - 1);
+fn final_permutation(input: u64) -> u64 {
+    let mut r : u64 = 0;
+    for i in 0..64 {
+        r += if input &(1<<63- i) != 0 {1} else {0} << FINAL_PERMUTATION_TABLE[i as usize];
     }
     r.clone()
 }
@@ -35,9 +51,8 @@ fn initial_permutation(input: &[u8;8]) -> [u8;8] {
 mod tests {
     use crate::*;
     #[test]
-    fn it_works() {
-        let x = initial_permutation(&[3,3,3,3,3,3,3,3]);
-        dbg!(x);
-        assert_eq!(2 + 2, 4);
+    fn should_permut_correctly() {
+        let x = initial_permutation(32 as u64);
+        assert_eq!(x, 70368744177664 as u64);
     }
 }
