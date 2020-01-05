@@ -7,16 +7,58 @@
 /// fn split(IP: 64bit) -> 32bit, 32bit;
 /// fn feistel(L0: 32bit, R0: 32bit, K: 48bit) -> 32bit, 32bit;
 /// fn inverseIP(R16, L16) -> 64bit;
+const EXPANSION_TABLE : [u8; 48] = [
+    31, 0, 1, 2, 3, 4, 3, 4,
+    5, 6, 7, 8, 7, 8, 9, 10,
+    11, 12, 11, 12, 13, 14, 15, 16,
+    15, 16, 17, 18, 19, 20, 19, 20,
+    21, 22, 23, 24, 23, 24, 25, 26,
+    27, 28, 27, 28, 29, 30, 31, 0
+];
+
+trait BitUtil {
+    fn get_bit(&self, index: u8) -> bool;
+    //TODO : change to Result?
+    fn set_bit(&mut self, index: u8) -> bool;
+}
+
+impl BitUtil for [u8] {
+    fn get_bit(&self, index: u8) -> bool {
+        if index > (self.len() *8 - 1) as u8 { false }
+        else {
+            //get self index from index
+            let s = index / 8;
+            let i = index % 8;
+            self[s as usize] & (1<<(7-i)) !=0
+        }
+    }
+
+    //set bit to 1
+    fn set_bit(&mut self, index: u8) -> bool {
+        if index > (self.len() *8 - 1) as u8 { false }
+        else {
+            //get self index from index
+            let s = index / 8;
+            let i = index % 8;
+            self[s as usize] |= 1 << (7-i);
+            true
+        }
+    }
+}
+
 trait Permutation {
     const TABLE: [u8; 64];
-    fn run(input: u64) -> u64 {
-        let mut r : u64 = 0;
+    fn run(input: [u8;8]) -> [u8;8] {
+        let mut r : [u8;8] = Default::default();
         for i in 0..64 {
-            r |=  if input & (1<<Self::TABLE[i as usize]) != 0 {1<<i} else {0};
+            if input.get_bit(Self::TABLE[i as usize]) {
+                r.set_bit(i);
+            }
         }
         r.clone()
     }
 }
+
 
 struct InitialPermutation {}
 impl Permutation for InitialPermutation {
@@ -46,17 +88,22 @@ impl Permutation for FinalPermutation {
     ];
 }
 
-fn split(input: u64) -> (u32, u32) {
-    let bytes = input.to_be_bytes();
+fn split(input: [u8;8]) -> ([u8;4], [u8;4]) {
     let mut l : [u8;4] = Default::default();
-    l.copy_from_slice(&bytes[0..4]);
+    l.copy_from_slice(&input[0..4]);
     let mut r : [u8;4] = Default::default();
-    r.copy_from_slice(&bytes[4..8]);
-    (u32::from_be_bytes(l),u32::from_be_bytes(r))
+    r.copy_from_slice(&input[4..8]);
+    (l,r)
 }
 
-fn xor(lhs: u64, rhs: u64) -> u64 {
-    lhs ^ rhs
+fn expand(input: [u8;4]) -> [u8;6] {
+    let mut r : [u8;6] = Default::default();
+    for i in 0..48{
+        if input.get_bit(EXPANSION_TABLE[i as usize]) {
+            r.set_bit(i);
+        }
+    }
+    r.clone()
 }
 
 #[cfg(test)]
@@ -65,14 +112,21 @@ mod DESTests {
     #[test]
     fn should_permut_correctly() {
         let input = 81985529216486895 as u64;
-        let x = InitialPermutation::run(input);
-        assert_eq!(x, 14699974583363760298 as u64);
+        let x = InitialPermutation::run(input.to_be_bytes());
+        assert_eq!(u64::from_be_bytes(x), 14699974583363760298);
     }
 
     #[test]
     fn should_split_correctly() {
         let input = 14699974583363760298 as u64;
-        let (l,r) = split(input);
-        assert_eq!((l,r), (3422604543 as u32, 4037734570 as u32));
+        let (l,r) = split(input.to_be_bytes());
+        assert_eq!((l,r), ((3422604543 as u32).to_be_bytes(), (4037734570 as u32).to_be_bytes()));
+    }
+
+    #[test]
+    fn should_expand_correctly() {
+        let input = 4037734570 as u32;
+        let expanded = expand(input.to_be_bytes());
+        assert_eq!(expanded, (134232046966101 as u64).to_be_bytes()[2..8]);
     }
 }
