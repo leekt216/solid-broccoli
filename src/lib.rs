@@ -46,6 +46,52 @@ impl BitUtil for [u8] {
     }
 }
 
+#[derive(Clone, Copy)]
+struct Bit6 {
+    arr : [bool;6]
+}
+
+impl BitUtil for Bit6 {
+    fn get_bit(&self, index: u8) -> bool {
+        if index > 5 {
+            false
+        }
+        else {
+            self.arr[index as usize]
+        }
+    }
+
+    fn set_bit(&mut self, index: u8) -> bool {
+        if index > 5 {
+            false
+        }
+        else {
+            self.arr[index as usize] = true;
+            true
+        }
+    }
+}
+
+impl Bit6 {
+    fn default() -> Bit6 {
+        Bit6 {
+            arr: [false;6]
+        }
+    }
+
+    fn from_48bit(from: [u8;6]) -> [Bit6;8] {
+        let mut r : [Bit6; 8] = [Bit6::default();8];
+        for i in 0..48 {
+            let r_j = i/6;
+            let r_k = i%6;
+            if from.get_bit(i) {
+                r[r_j as usize].set_bit(r_k);
+            }
+        }
+        r
+    }
+}
+
 trait Permutation {
     const TABLE: [u8; 64];
     fn run(input: [u8;8]) -> [u8;8] {
@@ -111,22 +157,22 @@ mod DESTests {
     use crate::*;
     #[test]
     fn should_permut_correctly() {
-        let input = 81985529216486895 as u64;
+        let input = 81_985_529_216_486_895 as u64;
         let x = InitialPermutation::run(input.to_be_bytes());
-        assert_eq!(u64::from_be_bytes(x), 14699974583363760298);
+        assert_eq!(u64::from_be_bytes(x), 14_699_974_583_363_760_298);
     }
 
     #[test]
     fn should_split_correctly() {
-        let input = 14699974583363760298 as u64;
+        let input = 14_699_974_583_363_760_298 as u64;
         let (l,r) = split(input.to_be_bytes());
-        assert_eq!((l,r), ((3422604543 as u32).to_be_bytes(), (4037734570 as u32).to_be_bytes()));
+        assert_eq!((l,r), ((3_422_604_543 as u32).to_be_bytes(), (4_037_734_570 as u32).to_be_bytes()));
     }
 
     #[test]
     fn should_expand_correctly() {
-        let input = 4037734570 as u32;
+        let input = 4_037_734_570 as u32;
         let expanded = expand(input.to_be_bytes());
-        assert_eq!(expanded, (134232046966101 as u64).to_be_bytes()[2..8]);
+        assert_eq!(expanded, (134_232_046_966_101 as u64).to_be_bytes()[2..8]);
     }
 }
