@@ -158,6 +158,19 @@ fn split_56bit(input: [u8;7]) -> ([u8;4], [u8;4]) {
     (l,r)
 }
 
+fn merge_28bits(l: [u8;4], r:[u8;4]) -> [u8;7] {
+    let l_temp = l.left_shift(4);
+    let mut m : [u8;7] = Default::default();
+    m[0] = l_temp[0];
+    m[1] = l_temp[1];
+    m[2] = l_temp[2];
+    m[3] = l_temp[3] + r[0];
+    m[4] = r[1];
+    m[5] = r[2];
+    m[6] = r[3];
+    m
+}
+
 const PARITY_DROP_TABLE: [u8;56] = [
     56, 48, 40, 32, 24, 16, 8, 0,
     57, 49, 41, 33, 25, 17, 9, 1,
@@ -177,13 +190,45 @@ fn parity_drop(input: [u8;8]) -> [u8;7] {
     }
     r.clone()
 }
+const PBOX_TABLE: [u8; 48] = [
+    13, 16, 10, 23, 0, 4, 2, 27,
+    14, 5, 20, 9, 22, 18, 11, 3,
+    25, 7, 15, 6, 26, 19, 12, 1,
+    40, 51, 30, 36, 46, 54, 29, 39,
+    50, 44, 32, 47, 43, 48, 38, 55,
+    33, 52, 45, 41, 49, 35, 28, 31
+];
 
-/*
-fn round_keys(input: [u8;8]) ->[[u8;6];16]{
-    let mut r : [[u8;6]; 16] = Default::default();
+fn pbox_compress(input: [u8;7])->[u8;6] {
+    let mut r:[u8;6] = Default::default();
+    for i in 0..48 {
+        if input.get_bit(PBOX_TABLE[i as usize] as usize) {
+            r.set_bit(i);
+        }
+    }
+    r.clone()
 }
 
-*/
+const ROUND_SHIFTS : [usize; 16] = [
+    1, 1, 2, 2, 2, 2, 2, 2,
+    1, 2, 2, 2, 2, 2, 2, 1
+];
+
+fn round_keys(input: [u8;8]) ->[[u8;6];16]{
+    let mut keys : [[u8;6]; 16] = Default::default();
+    let pc1 : [u8;7] = parity_drop(input);
+    let (mut l,mut r) = split_56bit(pc1);
+    for i in 0..16 {
+        let temp_l : [u8;4] = l.rotate(ROUND_SHIFTS[i]);
+        let temp_r : [u8;4] = r.rotate(ROUND_SHIFTS[i]);
+        let m : [u8;7]  = merge_28bits(temp_l, temp_r);
+        keys[i] = pbox_compress(m);
+        l = temp_l;
+        r = temp_r;
+    }
+    keys
+}
+
 fn expand(input: [u8;4]) -> [u8;6] {
     let mut r : [u8;6] = Default::default();
     for i in 0..48{
@@ -248,8 +293,10 @@ mod DESTests {
 
     #[test]
     fn should_split_56bit_correctly() {
-        let input = [255 as u8;7];
+        let input = [129 as u8;7];
         let (l,r) = split_56bit(input);
-        assert_eq!((l,r),([15, 255,255,255],[15,255,255,255]));
+        assert_eq!((l,r),([8, 24, 24, 24],[1,129,129,129]));
+        let m = merge_28bits(l,r);
+        assert_eq!(m, input);
     }
 }
