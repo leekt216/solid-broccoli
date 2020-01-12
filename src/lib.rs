@@ -172,6 +172,19 @@ fn merge_28bits(l: [u8;4], r:[u8;4]) -> [u8;7] {
     m
 }
 
+fn merge_32bits(l: [u8;4], r:[u8;4]) -> [u8;8] {
+    let mut m : [u8;8] = Default::default();
+    m[0] = l[0];
+    m[1] = l[1];
+    m[2] = l[2];
+    m[3] = l[3];
+    m[4] = r[0];
+    m[5] = r[1];
+    m[6] = r[2];
+    m[7] = r[3];
+    m
+}
+
 const PARITY_DROP_TABLE: [u8;56] = [
     56, 48, 40, 32, 24, 16, 8, 0,
     57, 49, 41, 33, 25, 17, 9, 1,
@@ -220,8 +233,8 @@ fn round_keys(input: [u8;8]) ->[[u8;6];16]{
     let pc1 : [u8;7] = parity_drop(input);
     let (mut l,mut r) = split_56bit(pc1);
     for i in 0..16 {
-        let temp_l : [u8;4] = l.rotate(ROUND_SHIFTS[i]);
-        let temp_r : [u8;4] = r.rotate(ROUND_SHIFTS[i]);
+        let temp_l : [u8;4] = l.rotate_as_bits(ROUND_SHIFTS[i], 28);
+        let temp_r : [u8;4] = r.rotate_as_bits(ROUND_SHIFTS[i], 28);
         let m : [u8;7]  = merge_28bits(temp_l, temp_r);
         keys[i] = pbox_compress(m);
         l = temp_l;
@@ -312,11 +325,61 @@ const SBOX : [[[u8;16];4];8] =
 ];
 
 fn sbox_lookup(i: usize, bit6: u8) -> u8 {
-    let f : u8 = (bit6 >> 4) & 2 + (bit6 & 1);
+    let f : u8 = ((bit6 >> 4) & 2) + (bit6 & 1);
     let j : u8 = (bit6 & 30) >> 1;
     SBOX[i][f as usize][j as usize]
 }
 
+const STRAIGHT_PERMUTATION :[u8;32] = [
+    15, 6, 19, 20, 28, 11, 27, 16,
+    0, 14, 22, 25, 4, 17, 30, 9,
+    1, 7, 23, 13, 31, 26, 2, 8,
+    18, 12, 29, 5, 21, 10, 3, 24
+];
+
+fn straight_permutation(input: [u8;4]) -> [u8;4] {
+    let mut r : [u8;4] = Default::default();
+    for i in 0..32{
+        if input.get_bit(STRAIGHT_PERMUTATION[i as usize] as usize) {
+            r.set_bit(i);
+        }
+    }
+    r.clone()
+}
+
+fn feistel(input: [u8;4], key: [u8;6]) -> [u8;4] {
+    let expanded: [u8;6] = expand(input);
+    let xored : [u8;6] = expanded.xor(key);
+    let bit6s : [u8;8] = split_48bits(xored);
+    let mut result : u32 = 0u32;
+    for i in 0..8 {
+        let op = sbox_lookup(i,bit6s[i]) as u32;
+        result += (op << (7-i)*4);
+    }
+    let r : [u8;4] = straight_permutation(result.to_be_bytes());
+    r
+}
+
+fn encrypt(input: [u8;8], key: [u8;8]) -> [u8;8] {
+    let keys = round_keys(key);
+    let ip = InitialPermutation::run(input);
+    let (mut l, mut r) = split_64bit(ip);
+
+    for i in 0..16 {
+        let newR = l.xor(feistel(r, keys[i]));
+        let newL = r;
+        if i != 15 {
+            r = newR;
+            l = newL;
+        }
+        else {
+            l = newR;
+        }
+    }
+    let m : [u8;8] = merge_32bits(l,r);
+    let c : [u8;8] = FinalPermutation::run(m);
+    c
+}
 
 //test set
 //plaintext = "123456ABCD132536"
@@ -404,5 +467,13 @@ mod DESTests {
         let input = 63u8;
         let sbox = sbox_lookup(7,input);
         assert_eq!(sbox, SBOX[7][3][15]);
+    }
+
+    #[test]
+    fn should_encrypt_correctly() {
+        let input = [ 0x12, 0x34, 0x56 ,0xab, 0xcd, 0x13, 0x25, 0x36 ];
+        let key = [0xaa, 0xbb, 0x09, 0x18, 0x27, 0x36, 0xcc, 0xdd];
+        let c : [u8;8] = encrypt(input, key);
+        assert_eq!([0xc0, 0xb7, 0xa8, 0xd0, 0x5f, 0x3a, 0x82, 0x9c], c);
     }
 }
