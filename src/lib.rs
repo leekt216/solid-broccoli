@@ -354,26 +354,48 @@ fn feistel(input: [u8;4], key: [u8;6]) -> [u8;4] {
     let mut result : u32 = 0u32;
     for i in 0..8 {
         let op = sbox_lookup(i,bit6s[i]) as u32;
-        result += (op << (7-i)*4);
+        result += op << ((7-i)*4);
     }
     let r : [u8;4] = straight_permutation(result.to_be_bytes());
     r
 }
 
-fn encrypt(input: [u8;8], key: [u8;8]) -> [u8;8] {
+pub fn encrypt(input: [u8;8], key: [u8;8]) -> [u8;8] {
     let keys = round_keys(key);
     let ip = InitialPermutation::run(input);
     let (mut l, mut r) = split_64bit(ip);
 
     for i in 0..16 {
-        let newR = l.xor(feistel(r, keys[i]));
-        let newL = r;
+        let new_r = l.xor(feistel(r, keys[i]));
+        let new_l = r;
         if i != 15 {
-            r = newR;
-            l = newL;
+            r = new_r;
+            l = new_l;
         }
         else {
-            l = newR;
+            l = new_r;
+        }
+    }
+    let m : [u8;8] = merge_32bits(l,r);
+    let c : [u8;8] = FinalPermutation::run(m);
+    c
+}
+
+pub fn decrypt(cipher: [u8;8], key: [u8;8]) -> [u8;8] {
+    let mut keys = round_keys(key);
+    keys.reverse();
+    let ip = InitialPermutation::run(cipher);
+    let (mut l, mut r) = split_64bit(ip);
+
+    for i in 0..16 {
+        let new_r = l.xor(feistel(r, keys[i]));
+        let new_l = r;
+        if i != 15 {
+            r = new_r;
+            l = new_l;
+        }
+        else {
+            l = new_r;
         }
     }
     let m : [u8;8] = merge_32bits(l,r);
@@ -387,7 +409,7 @@ fn encrypt(input: [u8;8], key: [u8;8]) -> [u8;8] {
 //initial permutation = "14A7D67818CA18AD"
 //cipher text = "C0B7A8D05F3A829C"
 #[cfg(test)]
-mod DESTests {
+mod des_tests {
     use crate::*;
     #[test]
     fn should_permut_correctly() {
@@ -475,5 +497,14 @@ mod DESTests {
         let key = [0xaa, 0xbb, 0x09, 0x18, 0x27, 0x36, 0xcc, 0xdd];
         let c : [u8;8] = encrypt(input, key);
         assert_eq!([0xc0, 0xb7, 0xa8, 0xd0, 0x5f, 0x3a, 0x82, 0x9c], c);
+    }
+
+    #[test]
+    fn should_decrypt_correctly() {
+        let input = [ 0x12, 0x34, 0x56 ,0xab, 0xcd, 0x13, 0x25, 0x36 ];
+        let key = [0xaa, 0xbb, 0x09, 0x18, 0x27, 0x36, 0xcc, 0xdd];
+        let c : [u8;8] = encrypt(input, key);
+        let d : [u8;8] = decrypt(c, key);
+        assert_eq!(input, d);
     }
 }
