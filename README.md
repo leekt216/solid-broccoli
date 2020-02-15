@@ -9,6 +9,6 @@ Practice repository for Rust Cryptography
 ### Features
 | Feature | Done |
 |---------|------|
-| DES     | X    |
+| DES     | O    |
 | AES     | X    |
 |         |      | 
