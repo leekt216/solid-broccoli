@@ -1,4 +1,4 @@
-use block_cipher::des::DES;
+use block_cipher::des;
 //test set
 //plaintext = "123456ABCD132536"
 //key = "AABB09182736CCDD"
@@ -88,7 +88,7 @@ fn should_return_appropriate_sbox() {
 fn should_encrypt_correctly() {
     let input = [ 0x12, 0x34, 0x56 ,0xab, 0xcd, 0x13, 0x25, 0x36 ];
     let key = [0xaa, 0xbb, 0x09, 0x18, 0x27, 0x36, 0xcc, 0xdd];
-    let c : [u8;8] = DES::encrypt(input, key);
+    let c : [u8;8] = des::encrypt(input, key);
     assert_eq!([0xc0, 0xb7, 0xa8, 0xd0, 0x5f, 0x3a, 0x82, 0x9c], c);
 }
 
@@ -96,7 +96,7 @@ fn should_encrypt_correctly() {
 fn should_decrypt_correctly() {
     let input = [ 0x12, 0x34, 0x56 ,0xab, 0xcd, 0x13, 0x25, 0x36 ];
     let key = [0xaa, 0xbb, 0x09, 0x18, 0x27, 0x36, 0xcc, 0xdd];
-    let c : [u8;8] = DES::encrypt(input, key);
-    let d : [u8;8] = DES::decrypt(c, key);
+    let c : [u8;8] = des::encrypt(input, key);
+    let d : [u8;8] = des::decrypt(c, key);
     assert_eq!(input, d);
 }

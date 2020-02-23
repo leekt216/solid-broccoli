@@ -1,4 +1,3 @@
-use crate::BlockCipher;
 /// DES on (K,I) -> R
 /// K : key, 56 bit
 /// I : input, 64 bit 
@@ -8,138 +7,8 @@ use crate::BlockCipher;
 /// fn split(IP: 64bit) -> 32bit, 32bit;
 /// fn feistel(L0: 32bit, R0: 32bit, K: 48bit) -> 32bit, 32bit;
 /// fn inverseIP(R16, L16) -> 64bit;
-trait BitUtil {
-    fn get_bit(&self, index: usize) -> bool;
-    //TODO : change to Result?
-    fn set_bit(&mut self, index: usize) -> bool;
-    fn rotate(&self, rhs: usize) -> Self;
-    fn rotate_as_bits(&self, rhs: usize, bits: usize) -> Self;
-    fn right_shift(&self, rhs: usize) -> Self;
-    fn left_shift(&self, rhs: usize) -> Self;
-    fn xor(&self, x: Self) -> Self;
-}
-
-impl<const N: usize> BitUtil for [u8; N] {
-    fn get_bit(&self, index: usize) -> bool {
-        if index >= N*8 { false }
-        else {
-            //get self index from index
-            let s = index / 8;
-            let i = index % 8;
-            self[s as usize] & (1<<(7-i)) !=0
-        }
-    }
-
-    //set bit to 1
-    fn set_bit(&mut self, index: usize) -> bool {
-        if index >= N*8 { false }
-        else {
-            //get self index from index
-            let s = index / 8;
-            let i = index % 8;
-            self[s as usize] |= 1 << (7-i);
-            true
-        }
-    }
-
-    //rotate left
-    fn rotate(&self, rhs: usize) -> [u8; N] {
-        let mut x = self.clone();
-        for i in 0..N {
-            x[i] = self[i] << rhs;
-            let k = if i+1 == self.len()  {0} else {i+1};
-            x[i] += self[k] >> (8-rhs);
-        }
-        x
-    }
-
-    //right shift 
-    fn right_shift(&self, rhs: usize) -> [u8; N] {
-        let mut x = self.clone();
-        x[0] = self[0] >> rhs;
-        for i in 1..N {
-            x[i] = self[i] >> rhs;
-            x[i] += self[i-1] << (8-rhs);
-        }
-        x
-    }
-    
-    //left shift 
-    fn left_shift(&self, rhs: usize) -> [u8; N] {
-        let mut x = self.clone();
-        for i in 0..N-1 {
-            x[i] = self[i] << rhs;
-            x[i] += self[i+1] >> (8-rhs);
-        }
-        x[N-1] = self[N-1] << rhs;
-        x
-    }
-
-    fn xor(&self, x: [u8;N]) -> [u8;N] {
-        let mut r = self.clone();
-        for i in 0..N {
-            r[i] ^= x[i];
-        }
-        r
-    }
-
-    fn rotate_as_bits(&self, rhs:usize, bits: usize) -> [u8; N] {
-        let mut x = self.rotate(rhs);
-        for i in 0..N {
-            x[i] = self[i] << rhs;
-            let (k, o) = if i+1 == self.len() {(0, N*8 - bits)} else {(i+1, 0)};
-            x[i] += self[k] >> (8 - rhs - o);
-        }
-
-        for i in 0..(N*8 - bits) {
-            x[0] &= 255 as u8 >> (i + 1);
-        }
-        x
-    }
-}
-
-trait Permutation {
-    const TABLE: [u8; 64];
-    fn run(input: [u8;8]) -> [u8;8] {
-        let mut r : [u8;8] = Default::default();
-        for i in 0..64 {
-            if input.get_bit(Self::TABLE[i as usize] as usize) {
-                r.set_bit(i);
-            }
-        }
-        r.clone()
-    }
-}
-
-
-struct InitialPermutation {}
-impl Permutation for InitialPermutation {
-    const TABLE: [u8; 64]= [
-        57, 49, 41, 33, 25, 17, 9, 1,
-        59, 51, 43, 35, 27, 19, 11, 3,
-        61, 53, 45, 37, 29, 21, 13, 5,
-        63, 55, 47, 39, 31, 23, 15, 7,
-        56, 48, 40, 32, 24, 16, 8, 0,
-        58, 50, 42, 34, 26, 18, 10, 2,
-        60, 52, 44, 36, 28, 20, 12, 4,
-        62, 54, 46, 38, 30, 22, 14, 6
-    ];
-}
-
-struct FinalPermutation {}
-impl Permutation for FinalPermutation {
-    const TABLE: [u8; 64] = [
-        39, 7, 47, 15, 55, 23, 63, 31,
-        38, 6, 46, 14, 54, 22, 62, 30,
-        37, 5, 45, 13, 53, 21, 61, 29,
-        36, 4, 44, 12, 52, 20, 60, 28,
-        35, 3, 43, 11, 51, 19, 59, 27,
-        34, 2, 42, 10, 50, 18, 58, 26,
-        33, 1, 41, 9, 49, 17, 57, 25,
-        32, 0, 40, 8, 48, 16, 56, 24
-    ];
-}
-
+use crate::consts;
+use bitutils::*;
 fn split_64bit(input: [u8;8]) -> ([u8;4], [u8;4]) {
     let mut l : [u8;4] = Default::default();
     l.copy_from_slice(&input[0..4]);
@@ -184,38 +53,20 @@ fn merge_32bits(l: [u8;4], r:[u8;4]) -> [u8;8] {
     m
 }
 
-const PARITY_DROP_TABLE: [u8;56] = [
-    56, 48, 40, 32, 24, 16, 8, 0,
-    57, 49, 41, 33, 25, 17, 9, 1,
-    58, 50, 42, 34, 26, 18, 10, 2,
-    59, 51, 43, 35, 62, 54, 46, 38,
-    30, 22, 14, 6, 61, 53, 45, 37,
-    29, 21, 13, 5, 60, 52, 44, 36,
-    28, 20, 12, 4, 27, 19, 11, 3
-];
-
 fn parity_drop(input: [u8;8]) -> [u8;7] {
     let mut r : [u8;7] = Default::default();
     for i in 0..56 {
-        if input.get_bit(PARITY_DROP_TABLE[i as usize] as usize)  {
+        if input.get_bit(consts::PARITY_DROP[i as usize] as usize)  {
             r.set_bit(i);
         }
     }
     r.clone()
 }
-const PBOX_TABLE: [u8; 48] = [
-    13, 16, 10, 23, 0, 4, 2, 27,
-    14, 5, 20, 9, 22, 18, 11, 3,
-    25, 7, 15, 6, 26, 19, 12, 1,
-    40, 51, 30, 36, 46, 54, 29, 39,
-    50, 44, 32, 47, 43, 48, 38, 55,
-    33, 52, 45, 41, 49, 35, 28, 31
-];
 
 fn pbox_compress(input: [u8;7])->[u8;6] {
     let mut r:[u8;6] = Default::default();
     for i in 0..48 {
-        if input.get_bit(PBOX_TABLE[i as usize] as usize) {
+        if input.get_bit(consts::PBOX[i as usize] as usize) {
             r.set_bit(i);
         }
     }
@@ -242,19 +93,10 @@ fn round_keys(input: [u8;8]) ->[[u8;6];16]{
     keys
 }
 
-const EXPANSION_TABLE : [u8; 48] = [
-    31, 0, 1, 2, 3, 4, 3, 4,
-    5, 6, 7, 8, 7, 8, 9, 10,
-    11, 12, 11, 12, 13, 14, 15, 16,
-    15, 16, 17, 18, 19, 20, 19, 20,
-    21, 22, 23, 24, 23, 24, 25, 26,
-    27, 28, 27, 28, 29, 30, 31, 0
-];
-
 fn expand(input: [u8;4]) -> [u8;6] {
     let mut r : [u8;6] = Default::default();
     for i in 0..48{
-        if input.get_bit(EXPANSION_TABLE[i as usize] as usize) {
+        if input.get_bit(consts::EXPANSION[i as usize] as usize) {
             r.set_bit(i);
         }
     }
@@ -271,75 +113,26 @@ fn split_48bits(input: [u8;6]) -> [u8; 8] {
     r
 }
 
-const SBOX : [[[u8;16];4];8] =
-[
-    [
-        [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7],
-        [0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8],
-        [4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0],
-        [15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13]
-    ], 
-    [
-        [15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10],
-        [3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5],
-        [0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15],
-        [13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9]
-    ], 
-    [
-        [10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8], 
-        [13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1], 
-        [13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7], 
-        [1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12]
-    ], 
-    [
-        [7, 13, 14, 3, 0, 6, 9, 10, 1, 2, 8, 5, 11, 12, 4, 15], 
-        [13, 8, 11, 5, 6, 15, 0, 3, 4, 7, 2, 12, 1, 10, 14, 9], 
-        [10, 6, 9, 0, 12, 11, 7, 13, 15, 1, 3, 14, 5, 2, 8, 4], 
-        [3, 15, 0, 6, 10, 1, 13, 8, 9, 4, 5, 11, 12, 7, 2, 14]
-    ], 
-    [
-        [2, 12, 4, 1, 7, 10, 11, 6, 8, 5, 3, 15, 13, 0, 14, 9], 
-        [14, 11, 2, 12, 4, 7, 13, 1, 5, 0, 15, 10, 3, 9, 8, 6], 
-        [4, 2, 1, 11, 10, 13, 7, 8, 15, 9, 12, 5, 6, 3, 0, 14], 
-        [11, 8, 12, 7, 1, 14, 2, 13, 6, 15, 0, 9, 10, 4, 5, 3]
-    ], 
-    [
-        [12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11], 
-        [10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8], 
-        [9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6], 
-        [4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13]
-    ], 
-    [
-        [4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1], 
-        [13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6], 
-        [1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2], 
-        [6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12]
-    ],
-    [
-        [13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7],
-        [1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2],
-        [7, 11, 4, 1, 9, 12, 14, 2, 0, 6, 10, 13, 15, 3, 5, 8],
-        [2, 1, 14, 7, 4, 10, 8, 13, 15, 12, 9, 0, 3, 5, 6, 11]
-    ]
-];
-
 fn sbox_lookup(i: usize, bit6: u8) -> u8 {
     let f : u8 = ((bit6 >> 4) & 2) + (bit6 & 1);
     let j : u8 = (bit6 & 30) >> 1;
-    SBOX[i][f as usize][j as usize]
+    consts::SBOX[i][f as usize][j as usize]
 }
 
-const STRAIGHT_PERMUTATION :[u8;32] = [
-    15, 6, 19, 20, 28, 11, 27, 16,
-    0, 14, 22, 25, 4, 17, 30, 9,
-    1, 7, 23, 13, 31, 26, 2, 8,
-    18, 12, 29, 5, 21, 10, 3, 24
-];
+fn permutation(table: [u8;64], input: [u8;8]) -> [u8;8] {
+    let mut r : [u8;8] = Default::default();
+    for i in 0..64{
+        if input.get_bit(table[i as usize] as usize) {
+            r.set_bit(i);
+        }
+    }
+    r.clone()
+}
 
 fn straight_permutation(input: [u8;4]) -> [u8;4] {
     let mut r : [u8;4] = Default::default();
     for i in 0..32{
-        if input.get_bit(STRAIGHT_PERMUTATION[i as usize] as usize) {
+        if input.get_bit(consts::STRAIGHT_PERMUTATION[i as usize] as usize) {
             r.set_bit(i);
         }
     }
@@ -359,48 +152,47 @@ fn feistel(input: [u8;4], key: [u8;6]) -> [u8;4] {
     r
 }
 
-pub struct DES {}
-impl BlockCipher for DES {
-    fn encrypt(input: [u8;8], key: [u8;8]) -> [u8;8] {
-        let keys = round_keys(key);
-        let ip = InitialPermutation::run(input);
-        let (mut l, mut r) = split_64bit(ip);
+pub fn encrypt(input: [u8;8], key: [u8;8]) -> [u8;8] {
+    let keys = round_keys(key);
+    let ip = permutation(consts::INITIAL_PERMUTATION, input);
+    //let ip = InitialPermutation::run(input);
+    let (mut l, mut r) = split_64bit(ip);
 
-        for i in 0..16 {
-            let new_r = l.xor(feistel(r, keys[i]));
-            let new_l = r;
-            if i != 15 {
-                r = new_r;
-                l = new_l;
-            }
-            else {
-                l = new_r;
-            }
+    for i in 0..16 {
+        let new_r = l.xor(feistel(r, keys[i]));
+        let new_l = r;
+        if i != 15 {
+            r = new_r;
+            l = new_l;
         }
-        let m : [u8;8] = merge_32bits(l,r);
-        let c : [u8;8] = FinalPermutation::run(m);
-        c
-    }
-
-    fn decrypt(cipher: [u8;8], key: [u8;8]) -> [u8;8] {
-        let mut keys = round_keys(key);
-        keys.reverse();
-        let ip = InitialPermutation::run(cipher);
-        let (mut l, mut r) = split_64bit(ip);
-
-        for i in 0..16 {
-            let new_r = l.xor(feistel(r, keys[i]));
-            let new_l = r;
-            if i != 15 {
-                r = new_r;
-                l = new_l;
-            }
-            else {
-                l = new_r;
-            }
+        else {
+            l = new_r;
         }
-        let m : [u8;8] = merge_32bits(l,r);
-        let c : [u8;8] = FinalPermutation::run(m);
-        c
     }
+    let m : [u8;8] = merge_32bits(l,r);
+    let c = permutation(consts::FINAL_PERMUTATION, m);
+    //let c : [u8;8] = FinalPermutation::run(m);
+    c
+}
+
+pub fn decrypt(cipher: [u8;8], key: [u8;8]) -> [u8;8] {
+    let mut keys = round_keys(key);
+    keys.reverse();
+    let ip = permutation(consts::INITIAL_PERMUTATION, cipher);
+    let (mut l, mut r) = split_64bit(ip);
+
+    for i in 0..16 {
+        let new_r = l.xor(feistel(r, keys[i]));
+        let new_l = r;
+        if i != 15 {
+            r = new_r;
+            l = new_l;
+        }
+        else {
+            l = new_r;
+        }
+    }
+    let m : [u8;8] = merge_32bits(l,r);
+    let c = permutation(consts::FINAL_PERMUTATION, m);
+    c
 }
