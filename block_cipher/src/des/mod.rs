@@ -7,7 +7,7 @@
 /// fn split(IP: 64bit) -> 32bit, 32bit;
 /// fn feistel(L0: 32bit, R0: 32bit, K: 48bit) -> 32bit, 32bit;
 /// fn inverseIP(R16, L16) -> 64bit;
-use crate::consts;
+mod consts;
 use bitutils::*;
 fn split_64bit(input: [u8;8]) -> ([u8;4], [u8;4]) {
     let mut l : [u8;4] = Default::default();
